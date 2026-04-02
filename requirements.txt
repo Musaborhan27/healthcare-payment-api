@@ -9,3 +9,5 @@ python-multipart
 celery[redis]
 redis
 python-dotenv
+pytest
+httpx
