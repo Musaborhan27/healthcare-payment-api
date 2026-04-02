@@ -1,263 +1,322 @@
 ````md
 # Healthcare Payment Automation API
 
-A backend portfolio project built with FastAPI that simulates a healthcare claims and payment workflow with JWT authentication, role-based access control, and asynchronous payment processing.
+A portfolio backend project built with **FastAPI**, **PostgreSQL**, **Redis**, and **Celery** to simulate a healthcare claims and payment workflow with **JWT authentication**, **role-based access control**, and **asynchronous payment processing**.
 
 ## Overview
 
 This project models a simplified healthcare reimbursement system.
 
-Users can create insurance claims, while admins review and approve or reject them. Once a claim is approved, the system creates a payment record and processes it asynchronously.
+- Users can register and log in
+- Authenticated users can create and view their own claims
+- Admins can view all users, review all claims, and approve or reject claims
+- Approved claims trigger an asynchronous payment process through Celery
+- Payment records are stored in PostgreSQL and can be queried through protected endpoints
 
-The goal of this project is to demonstrate backend engineering fundamentals beyond basic CRUD, including authentication, authorization, workflow logic, async processing, and container-ready project structure.
+This project was built to demonstrate backend engineering skills around:
 
-## Features
+- REST API design
+- authentication and authorization
+- async background processing
+- service orchestration with Docker Compose
+- relational database integration
+- role-based business workflows
 
-- JWT-based authentication
-- Role-Based Access Control (RBAC)
-- User and admin flows
-- Claim creation and review workflow
-- Asynchronous payment state transition
-- Seeded default admin account
-- Health check endpoint
-- Swagger UI documentation
-- Docker support
+---
 
 ## Tech Stack
 
-- FastAPI
-- SQLAlchemy
-- SQLite
-- JWT
-- Passlib / bcrypt
-- FastAPI BackgroundTasks
-- Docker
+- **FastAPI**
+- **PostgreSQL**
+- **SQLAlchemy**
+- **Redis**
+- **Celery**
+- **JWT Authentication**
+- **Docker / Docker Compose**
 
-## Important Note
+---
 
-The current async workflow uses `FastAPI BackgroundTasks` to simulate asynchronous processing.
+## Architecture
 
-This is suitable for demonstrating backend workflow design, but it is not a distributed job queue. A more production-oriented next step would be replacing this with Celery + Redis or another real queue system.
+The system is split into four services:
 
-## Roles
+- **api** -> FastAPI application
+- **db** -> PostgreSQL database
+- **redis** -> message broker / result backend
+- **worker** -> Celery worker for async payment processing
 
-### User
-A normal user can:
+### Workflow
 
-- register
-- log in
-- view their profile
-- create claims
-- view only their own claims
-- view only their own payments
+1. A user registers and logs in
+2. The user creates a claim
+3. An admin reviews the claim
+4. If approved, the API creates a payment record
+5. Celery processes the payment asynchronously
+6. The payment status is updated to `completed`
 
-A normal user cannot:
+---
 
-- approve claims
-- reject claims
-- view all claims
-- view all payments
+## Features
 
-### Admin
-An admin can:
-
-- log in
-- view all users
-- view all claims
-- approve claims
-- reject claims
-- view all payments
-
-## Default Admin Account
-
-The application seeds an admin user automatically at startup.
-
-- **Email:** `admin@healthcare.local`
-- **Password:** `admin123`
-
-## API Endpoints
-
-### Auth
-- `POST /auth/login`
-
-### Users
-- `POST /users/register`
-- `GET /users/me`
-- `GET /users/`
+### Authentication and Authorization
+- User registration
+- JWT-based login
+- Protected routes with bearer token
+- Role-based access control (`user` and `admin`)
 
 ### Claims
-- `POST /claims/`
-- `GET /claims/`
-- `GET /claims/all`
-- `POST /claims/{claim_id}/approve`
-- `POST /claims/{claim_id}/reject`
+- Create claim
+- View own claims
+- Admin can view all claims
+- Admin can approve or reject claims
 
 ### Payments
-- `GET /payments/`
-- `GET /payments/all`
+- Async payment processing using Celery
+- View own payments
+- Admin can view all payments
 
-### Health
-- `GET /health`
+### Health and Service Readiness
+- `/health` endpoint
+- Docker Compose health checks for PostgreSQL and Redis
+- API startup waits for the database before booting
 
-## Example Workflow
-
-### User Flow
-1. Register a user
-2. Log in as that user
-3. Authorize in Swagger with the bearer token
-4. Create a claim
-5. View own claims
-6. Attempt to approve claim
-7. Receive `403 Admin access required`
-
-### Admin Flow
-1. Log in as admin
-2. Authorize in Swagger with the admin bearer token
-3. View all claims
-4. Approve a pending claim
-5. View all payments
-6. Observe payment state transition from `processing` to `completed`
-
-## Verified Behavior
-
-This project has been tested for the following behaviors:
-
-- user login works successfully
-- `GET /users/me` returns the correct user role
-- normal users can create claims
-- normal users cannot approve claims
-- admins can view all claims
-- admins can approve claims
-- approved claims create payment records
-- payments complete asynchronously after approval
-
-## Payment Processing Logic
-
-When an admin approves a claim:
-
-1. the claim status changes from `pending` to `approved`
-2. a payment record is created with status `processing`
-3. a background task starts
-4. after a short delay, the payment status changes to `completed`
-
-This simulates an async backend workflow commonly found in real systems.
-
-## Health Check
-
-The API includes a simple health endpoint:
-
-```bash
-GET /health
-````
-
-Example response:
-
-```json
-{
-  "status": "ok",
-  "service": "healthcare-payment-api"
-}
-```
-
-## Local Setup
-
-Clone the project and run it locally:
-
-```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
-
-## Swagger UI
-
-After starting the server, open:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-## Docker
-
-### Build the image
-
-```bash
-docker build -t healthcare-payment-api .
-```
-
-### Run the container
-
-```bash
-docker run -p 8000:8000 healthcare-payment-api
-```
-
-Then open:
-
-```text
-http://127.0.0.1:8000/docs
-```
+---
 
 ## Project Structure
 
 ```bash
-app/
-├── core/
-│   └── security.py
-├── db/
-│   └── database.py
-├── models/
-│   ├── user.py
-│   ├── claim.py
-│   └── payment.py
-├── routes/
-│   ├── auth.py
-│   ├── user.py
-│   ├── claim.py
-│   └── payment.py
-├── schemas/
-└── main.py
+.
+├── app
+│   ├── core
+│   │   ├── celery_app.py
+│   │   └── security.py
+│   ├── db
+│   │   └── database.py
+│   ├── models
+│   │   ├── claim.py
+│   │   ├── payment.py
+│   │   └── user.py
+│   ├── routes
+│   │   ├── auth.py
+│   │   ├── claim.py
+│   │   ├── payment.py
+│   │   └── user.py
+│   ├── schemas
+│   │   └── user.py
+│   └── main.py
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+└── README.md
+````
 
-Dockerfile
-README.md
-requirements.txt
-.gitignore
-.dockerignore
+---
+
+## API Endpoints
+
+### Auth
+
+* `POST /auth/login` -> Login and receive JWT token
+
+### Users
+
+* `POST /users/register` -> Register a new user
+* `GET /users/me` -> Get current authenticated user
+* `GET /users/` -> Admin only, list all users
+
+### Claims
+
+* `POST /claims/` -> Create claim
+* `GET /claims/` -> Get current user claims
+* `GET /claims/all` -> Admin only, get all claims
+* `POST /claims/{claim_id}/approve` -> Admin only, approve claim
+* `POST /claims/{claim_id}/reject` -> Admin only, reject claim
+
+### Payments
+
+* `GET /payments/` -> Get current user payments
+* `GET /payments/all` -> Admin only, get all payments
+
+### Health
+
+* `GET /health` -> Health check
+
+---
+
+## Running Locally with Docker Compose
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/Musaborhan27/healthcare-payment-api.git
+cd healthcare-payment-api
 ```
 
-## What This Project Demonstrates
+### 2. Start the services
 
-This project demonstrates the ability to build:
+```bash
+docker compose up --build
+```
 
-* authenticated backend APIs
-* role-based access control
-* workflow-driven business logic
-* asynchronous state transitions
-* admin/user separation
-* container-ready backend services
+This starts:
 
-## Limitations
+* FastAPI app on port `8000`
+* PostgreSQL on port `5432`
+* Redis on port `6379`
+* Celery worker in the background
 
-This project intentionally keeps some parts simple:
+### 3. Open Swagger UI
 
-* uses SQLite instead of PostgreSQL
-* uses BackgroundTasks instead of a real queue
-* does not yet include automated tests
-* does not yet include rate limiting
-* does not yet include CI/CD
+```bash
+http://localhost:8000/docs
+```
 
-These are reasonable next improvements, not hidden weaknesses.
+---
+
+## Environment Notes
+
+The API service uses Docker Compose environment values such as:
+
+```env
+DATABASE_URL=postgresql://postgres:postgres@db:5432/healthcare_db
+REDIS_URL=redis://redis:6379/0
+```
+
+When running outside Docker, local values typically look like:
+
+```env
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/healthcare_db
+REDIS_URL=redis://localhost:6379/0
+```
+
+---
+
+## Default Admin Bootstrap
+
+On application startup, the system bootstraps a default admin user using values defined in `app/core/security.py`.
+
+That admin account can be used to:
+
+* list all users
+* list all claims
+* approve claims
+* reject claims
+* list all payments
+
+---
+
+## Example Tested Flow
+
+The following workflow has been manually verified through Swagger UI:
+
+1. Register a normal user
+2. Log in and receive bearer token
+3. Access `/users/me`
+4. Confirm normal user cannot access admin-only endpoints
+5. Create a claim
+6. Log in as admin
+7. Access `/claims/all`
+8. Approve a claim
+9. Confirm payment is created asynchronously
+10. Confirm `/payments/all` returns a completed payment record
+
+Example result after approval:
+
+```json
+[
+  {
+    "id": 1,
+    "claim_id": 1,
+    "amount": 1000,
+    "status": "completed"
+  }
+]
+```
+
+---
+
+## Data Persistence
+
+PostgreSQL data is stored using a named Docker volume:
+
+```yaml
+volumes:
+  postgres_data:
+```
+
+This means data persists across normal container restarts such as:
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+Do **not** use `docker compose down -v` if you want to preserve data, because `-v` removes the database volume.
+
+---
+
+## Current Status
+
+### Completed
+
+* JWT authentication
+* RBAC authorization
+* claim creation flow
+* admin review flow
+* async payment execution with Celery
+* Docker Compose setup
+* PostgreSQL integration
+* Redis integration
+* health checks and startup readiness
+
+### Not Yet Added
+
+* automated test suite
+* CI/CD pipeline
+* production deployment
+* API rate limiting
+* audit logging
+* database migrations with Alembic
+
+---
+
+## Why This Project Matters
+
+This project demonstrates more than CRUD.
+
+It shows how to design a backend workflow where:
+
+* permissions matter
+* multiple services coordinate
+* async work is separated from request/response cycles
+* infrastructure and application startup order matter
+* persistent state is stored correctly across container restarts
+
+---
 
 ## Next Improvements
 
-Planned upgrades for a more production-oriented version:
+* Add automated tests with `pytest`
+* Add GitHub Actions CI
+* Add Alembic migrations
+* Deploy a live demo with Render or Railway
+* Add stronger validation and error handling
+* Add observability and logging improvements
 
-* PostgreSQL integration
-* Celery + Redis for real background jobs
-* pytest test suite
-* rate limiting
-* better error handling
-* structured logging
-* monitoring / observability
-* environment-based configuration
-* CI/CD pipeline
+---
+
+## Author
+
+**Musab Orhan**
+
+Backend portfolio project focused on FastAPI, authentication, RBAC, async workflows, Dockerized services, and production-style backend design.
+
+````
+
+Commit and push:
+
+```bash
+git add README.md
+git commit -m "Update README for Postgres Redis Celery architecture"
+git push origin main
+````
