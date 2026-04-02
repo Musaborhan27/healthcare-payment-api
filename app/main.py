@@ -1,6 +1,9 @@
 import logging
+import time
 
 from fastapi import FastAPI
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.security import ADMIN_EMAIL, ADMIN_PASSWORD, get_password_hash
@@ -17,7 +20,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-Base.metadata.create_all(bind=engine)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Healthcare Payment Automation API")
 
@@ -27,16 +30,26 @@ app.include_router(claim.router)
 app.include_router(payment.router)
 
 
-@app.get("/health")
-def health_check():
-    return {
-        "status": "ok",
-        "service": "healthcare-payment-api"
-    }
+def wait_for_db(max_attempts: int = 30, delay_seconds: int = 2) -> None:
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+            logger.info("Database connection established")
+            return
+        except OperationalError as exc:
+            logger.warning(
+                "Database not ready yet (attempt %s/%s): %s",
+                attempt,
+                max_attempts,
+                exc,
+            )
+            time.sleep(delay_seconds)
+
+    raise RuntimeError("Database did not become ready in time")
 
 
-@app.on_event("startup")
-def bootstrap_users():
+def bootstrap_users() -> None:
     db: Session = SessionLocal()
     try:
         admin_user = db.query(User).filter(User.email == ADMIN_EMAIL).first()
@@ -50,9 +63,9 @@ def bootstrap_users():
             )
             db.add(admin_user)
             db.commit()
-            logging.info("Default admin user created successfully")
+            logger.info("Default admin user created successfully")
         else:
-            logging.info("Default admin user already exists")
+            logger.info("Default admin user already exists")
 
         accidental_admins = (
             db.query(User)
@@ -67,9 +80,29 @@ def bootstrap_users():
 
         if changed_count > 0:
             db.commit()
-            logging.info(f"Demoted {changed_count} accidental admin user(s) to role=user")
+            logger.info(
+                "Demoted %s accidental admin user(s) to role=user",
+                changed_count
+            )
 
-    except Exception as e:
-        logging.exception(f"Error while bootstrapping users: {str(e)}")
+    except Exception:
+        db.rollback()
+        logger.exception("Error while bootstrapping users")
+        raise
     finally:
         db.close()
+
+
+@app.on_event("startup")
+def startup_event():
+    wait_for_db()
+    Base.metadata.create_all(bind=engine)
+    bootstrap_users()
+
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "ok",
+        "service": "healthcare-payment-api"
+    }
