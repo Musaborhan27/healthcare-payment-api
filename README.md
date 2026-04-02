@@ -310,13 +310,3 @@ It shows how to design a backend workflow where:
 **Musab Orhan**
 
 Backend portfolio project focused on FastAPI, authentication, RBAC, async workflows, Dockerized services, and production-style backend design.
-
-````
-
-Commit and push:
-
-```bash
-git add README.md
-git commit -m "Update README for Postgres Redis Celery architecture"
-git push origin main
-````
